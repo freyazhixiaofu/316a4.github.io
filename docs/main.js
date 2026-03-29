@@ -36,7 +36,10 @@
   let quantileGridGX = null;
   let quantileGridGY = null;
   let quantileLineG = null;
+  let quantileHitPointsG = null;
   let quantileClipId = "quantile-focus-clip";
+  let cartoonHiTimeout = null;
+  let pendingCartoonHiKey = null;
   let quantileContextBuilt = false;
   let quantileContextG = null;
   let quantileContextAreaG = null;
@@ -44,12 +47,12 @@
   let quantileBrushG = null;
   let quantileBrush = null;
   let quantileBrushDomain = null;
+  let quantileBrushResetUiBound = false;
   let latestQuantileSeries = [];
   let latestQuantileP50 = [];
   let latestQuantileYDomain = null;
   let xQ = null;
   let yQ = null;
-  let quantileHitRect = null;
   const bisectQuantileAge = d3.bisector(d => d.age).left;
 
   function nearestQuantilePoint(values, age) {
@@ -137,9 +140,26 @@
       .attr("class", "quantile-axis-x");
     quantileYAxisG = quantileG.append("g").attr("class", "quantile-axis-y");
 
+    quantilePlotG
+      .append("rect")
+      .attr("class", "quantile-plot-pointer")
+      .attr("width", quantileInnerWidth)
+      .attr("height", quantileInnerHeight)
+      .attr("fill", "transparent")
+      .style("cursor", "crosshair")
+      .on("mousemove", quantilePlotPointerMove)
+      .on("click", quantilePlotPointerClick);
+
+    quantilePlotG.on("mouseleave", () => quantileTooltip.style("opacity", 0));
+
     quantileLineG = quantilePlotG
       .append("g")
       .attr("class", "quantile-lines")
+      .attr("clip-path", `url(#${quantileClipId})`);
+
+    quantileHitPointsG = quantilePlotG
+      .append("g")
+      .attr("class", "quantile-hit-points")
       .attr("clip-path", `url(#${quantileClipId})`);
 
     quantileG
@@ -161,52 +181,106 @@
       .attr("font-size", 16)
       .text("Stature (cm)");
 
-    quantileHitRect = quantileG
-      .append("rect")
-      .attr("class", "quantile-hit-overlay")
-      .attr("x", 0)
-      .attr("y", 0)
-      .attr("width", quantileInnerWidth)
-      .attr("height", quantileInnerHeight)
-      .attr("fill", "transparent")
-      .style("cursor", "crosshair")
-      .on("mousemove", event => {
-        if (!latestQuantileSeries.length || !xQ || !yQ) return;
-        const [px, py] = d3.pointer(event, quantileG.node());
-        const [a0, a1] = xQ.domain();
-        const age = xQ.invert(px);
-        if (age < a0 || age > a1) {
-          quantileTooltip.style("opacity", 0);
-          return;
-        }
-        let best = null;
-        let bestDist = Infinity;
-        for (const s of latestQuantileSeries) {
-          const pt = nearestQuantilePoint(s.values, age);
-          if (!pt || pt.stature == null) continue;
-          const lineY = yQ(pt.stature);
-          const dist = Math.abs(lineY - py);
-          if (dist < bestDist) {
-            bestDist = dist;
-            best = { key: s.key, point: pt };
-          }
-        }
-        const maxDist = 24;
-        if (!best || bestDist > maxDist) {
-          quantileTooltip.style("opacity", 0);
-          return;
-        }
-        quantileTooltip
-          .style("opacity", 1)
-          .html(
-            `<strong>${best.key}</strong><br/>${Number(best.point.stature).toFixed(1)} cm`
-          )
-          .style("left", `${event.pageX + 12}px`)
-          .style("top", `${event.pageY - 10}px`);
-      })
-      .on("mouseleave", () => {
-        quantileTooltip.style("opacity", 0);
-      });
+  }
+
+  function quantilePlotPointerMove(event) {
+    if (!latestQuantileSeries.length || !xQ || !yQ) return;
+    const [px, py] = d3.pointer(event, quantileG.node());
+    const [a0, a1] = xQ.domain();
+    const age = xQ.invert(px);
+    if (age < a0 || age > a1) {
+      quantileTooltip.style("opacity", 0);
+      return;
+    }
+    let best = null;
+    let bestDist = Infinity;
+    for (const s of latestQuantileSeries) {
+      const pt = nearestQuantilePoint(s.values, age);
+      if (!pt || pt.stature == null) continue;
+      const lineY = yQ(pt.stature);
+      const dist = Math.abs(lineY - py);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = { key: s.key, point: pt };
+      }
+    }
+    const maxDist = 24;
+    if (!best || bestDist > maxDist) {
+      quantileTooltip.style("opacity", 0);
+      return;
+    }
+    quantileTooltip
+      .style("opacity", 1)
+      .html(
+        `<strong>${best.key}</strong><br/>${Number(best.point.stature).toFixed(1)} cm<br/><span class="quantile-tip-hint" role="note">Click the dot — cartoon says hi →</span>`
+      )
+      .style("left", `${event.pageX + 12}px`)
+      .style("top", `${event.pageY - 10}px`);
+  }
+
+  function quantilePlotPointerClick(event) {
+    if (!latestQuantileSeries.length || !xQ || !yQ) return;
+    const [px, py] = d3.pointer(event, quantileG.node());
+    const flat = latestQuantileSeries.flatMap(s =>
+      s.values.map(v => ({
+        key: s.key,
+        color: s.color,
+        age: v.age,
+        stature: v.stature
+      }))
+    );
+    let best = null;
+    let bestDist = Infinity;
+    const clickPx = 13;
+    flat.forEach(d => {
+      const dx = xQ(d.age) - px;
+      const dy = yQ(d.stature) - py;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = d;
+      }
+    });
+    if (best && bestDist <= clickPx) syncCartoonSidebarFromChartPoint(best.age, best.key);
+  }
+
+  /** Match sidebar gender/age to the quantile chart, then highlight the percentile figure. */
+  function syncCartoonSidebarFromChartPoint(ageYears, quantileKey) {
+    if (cartoonHiTimeout) {
+      clearTimeout(cartoonHiTimeout);
+      cartoonHiTimeout = null;
+    }
+    pendingCartoonHiKey = null;
+
+    cartoonGender = currentQuantileGender;
+    cartoonAge = Math.round(clamp(+ageYears, 2, 80));
+
+    const rangeInput = document.getElementById("cartoon-age");
+    if (rangeInput) rangeInput.value = String(cartoonAge);
+    const ageVal = document.getElementById("cartoon-age-value");
+    if (ageVal) ageVal.textContent = String(cartoonAge);
+
+    d3.selectAll(".cartoon-gender-toggle").classed("active", false);
+    d3.select(`.cartoon-gender-toggle[data-cartoon-gender="${cartoonGender}"]`).classed("active", true);
+
+    updateCartoonSidebar();
+    setCartoonHi(quantileKey);
+  }
+
+  function setCartoonHi(quantileKey) {
+    pendingCartoonHiKey = quantileKey;
+    document.querySelectorAll(".cartoon-figure-slot").forEach(el => {
+      el.classList.toggle("cartoon-figure-slot--hi", el.getAttribute("data-quantile") === quantileKey);
+    });
+    const slot = document.querySelector(`.cartoon-figure-slot[data-quantile="${quantileKey}"]`);
+    if (slot) {
+      slot.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    }
+    if (cartoonHiTimeout) clearTimeout(cartoonHiTimeout);
+    cartoonHiTimeout = setTimeout(() => {
+      document.querySelectorAll(".cartoon-figure-slot--hi").forEach(el => el.classList.remove("cartoon-figure-slot--hi"));
+      pendingCartoonHiKey = null;
+    }, 4500);
   }
 
   function buildQuantileContextChart() {
@@ -240,6 +314,54 @@
       });
 
     quantileBrushG = quantileContextG.append("g").attr("class", "quantile-brush").call(quantileBrush);
+    attachQuantileBrushResetHandlers();
+  }
+
+  function attachQuantileBrushResetHandlers() {
+    if (!quantileBrushG || !quantileBrush) return;
+    const overlay = quantileBrushG.select(".overlay");
+    if (overlay.empty()) return;
+
+    let down = null;
+    overlay
+      .on("mousedown.brushReset", event => {
+        down = [event.clientX, event.clientY];
+      })
+      .on("click.brushReset", event => {
+        if (!quantileBrushDomain) {
+          down = null;
+          return;
+        }
+        if (!down) return;
+        const dx = event.clientX - down[0];
+        const dy = event.clientY - down[1];
+        down = null;
+        if (dx * dx + dy * dy > 100) return;
+        quantileBrushG.call(quantileBrush.move, null);
+      });
+
+    if (quantileBrushResetUiBound) return;
+    quantileBrushResetUiBound = true;
+    const label = document.querySelector(".quantile-brush-label");
+    if (!label) return;
+    label.setAttribute("role", "button");
+    label.tabIndex = 0;
+    label.setAttribute(
+      "title",
+      "After choosing an age range, click here or the brush strip again (without dragging) to show all ages."
+    );
+    const resetIfZoomed = () => {
+      if (quantileBrushDomain && quantileBrushG && quantileBrush) {
+        quantileBrushG.call(quantileBrush.move, null);
+      }
+    };
+    label.addEventListener("click", resetIfZoomed);
+    label.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        resetIfZoomed();
+      }
+    });
   }
 
   function renderQuantileFocus(series) {
@@ -303,7 +425,46 @@
       .attr("d", d => line(d.values));
     lines.exit().remove();
 
-    if (quantileHitRect) quantileHitRect.raise();
+    const flatPoints = series.flatMap(s =>
+      s.values.map(v => ({
+        key: s.key,
+        color: s.color,
+        age: v.age,
+        stature: v.stature
+      }))
+    );
+    const hitSel = quantileHitPointsG
+      .selectAll("circle.quantile-hit-point")
+      .data(flatPoints, d => `${d.key}-${d.age}`);
+    hitSel
+      .enter()
+      .append("circle")
+      .attr("class", "quantile-hit-point")
+      .merge(hitSel)
+      .attr("cx", d => xQ(d.age))
+      .attr("cy", d => yQ(d.stature))
+      .attr("r", 4.5)
+      .attr("fill", "#fff")
+      .attr("stroke", d => d.color)
+      .attr("stroke-width", 2)
+      .style("cursor", "pointer")
+      .on("click", (e, d) => {
+        e.stopPropagation();
+        syncCartoonSidebarFromChartPoint(d.age, d.key);
+      })
+      .on("mousemove", (e, d) => {
+        e.stopPropagation();
+        quantileTooltip
+          .style("opacity", 1)
+          .html(
+            `<strong>${d.key}</strong><br/>${Number(d.stature).toFixed(1)} cm<br/><span class="quantile-tip-hint" role="note">Click the dot — cartoon says hi →</span>`
+          )
+          .style("left", `${e.pageX + 12}px`)
+          .style("top", `${e.pageY - 10}px`);
+      });
+    hitSel.exit().remove();
+
+    quantileHitPointsG.raise();
   }
 
   function renderQuantileContext(p50Values, yDomain) {
@@ -433,30 +594,35 @@
     return plotH * (s / cap);
   }
 
+  /** Vertical space above the ruler for the “cm” badge (viewBox units, matches plot scale). */
+  const RULER_UNIT_BAND = 28;
+
   /**
    * Ruler 0…H_CEILING cm + horizontal head guides. viewBox width = rulerW + n * colW.
+   * Unit badge sits in a band above the ruler so it does not overlap tick labels.
    */
   function buildCartoonMeasureSvg(rows, hMaxCm, plotH, rulerW, colW) {
     const n = rows.length;
     const totalW = rulerW + n * colW;
+    const totalH = plotH + RULER_UNIT_BAND;
     const yAt = cm => statureToY(cm, hMaxCm, plotH);
 
     const tickParts = [];
-    for (let cm = 0; cm <= hMaxCm; cm++) {
+    for (let cm = 0; cm <= hMaxCm; cm += 5) {
       const y = yAt(cm);
       if (y < -0.5 || y > plotH + 0.5) continue;
+      const isTwenty = cm % 20 === 0;
       const isTen = cm % 10 === 0;
-      const isFive = cm % 5 === 0;
-      const tickLen = isTen ? 16 : isFive ? 10 : 5;
-      const stroke = isTen ? "#1e293b" : isFive ? "#64748b" : "#cbd5e1";
-      const sw = isTen ? 1.45 : isFive ? 1.1 : 0.85;
+      const tickLen = isTwenty ? 20 : isTen ? 14 : 8;
+      const stroke = isTwenty ? "#0f172a" : isTen ? "#334155" : "#64748b";
+      const sw = isTwenty ? 1.65 : isTen ? 1.3 : 0.95;
       tickParts.push(
         `<line x1="${rulerW - tickLen}" y1="${y}" x2="${rulerW}" y2="${y}" stroke="${stroke}" stroke-width="${sw}" />`
       );
-      if (isTen) {
-        const ty = cm === 0 ? plotH - 4 : y + 3.5;
+      if (isTwenty) {
+        const ty = cm === 0 ? plotH - 6 : y + 4.5;
         tickParts.push(
-          `<text x="${rulerW - tickLen - 4}" y="${ty}" text-anchor="end" class="cartoon-ruler-tick-label">${cm}</text>`
+          `<text x="${rulerW - tickLen - 6}" y="${ty}" text-anchor="end" class="cartoon-ruler-tick-label">${cm}</text>`
         );
       }
     }
@@ -468,19 +634,24 @@
       return `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${r.color}" stroke-width="2" stroke-opacity="0.95" stroke-linecap="round" />`;
     });
 
-    return `<svg class="cartoon-measure-svg" viewBox="0 0 ${totalW} ${plotH}" preserveAspectRatio="none" aria-hidden="true">
+    return `<svg class="cartoon-measure-svg" viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="none" aria-hidden="true">
       <defs>
         <pattern id="cartoon-ruler-hatch" width="4" height="4" patternUnits="userSpaceOnUse">
           <path d="M0 4 L4 0" stroke="#e2e8f0" stroke-width="0.6"/>
         </pattern>
       </defs>
-      <rect x="0" y="0" width="${rulerW}" height="${plotH}" fill="#faf8f5" stroke="#cbd5e1" stroke-width="1.2"/>
-      <rect x="0" y="0" width="${rulerW}" height="${plotH}" fill="url(#cartoon-ruler-hatch)" opacity="0.35"/>
-      <line x1="${rulerW}" y1="0" x2="${rulerW}" y2="${plotH}" stroke="#0f172a" stroke-width="2.2"/>
-      <line x1="${rulerW}" y1="${plotH}" x2="${totalW}" y2="${plotH}" stroke="#0f172a" stroke-width="2" />
-      <text x="6" y="14" class="cartoon-ruler-title">cm</text>
-      ${tickParts.join("")}
-      ${headLines.join("")}
+      <g class="cartoon-ruler-unit-badge">
+        <rect x="3" y="3" width="34" height="22" rx="5" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+        <text x="20" y="18" text-anchor="middle" class="cartoon-ruler-title">cm</text>
+      </g>
+      <g transform="translate(0, ${RULER_UNIT_BAND})">
+        <rect x="0" y="0" width="${rulerW}" height="${plotH}" fill="#faf8f5" stroke="#cbd5e1" stroke-width="1.2"/>
+        <rect x="0" y="0" width="${rulerW}" height="${plotH}" fill="url(#cartoon-ruler-hatch)" opacity="0.35"/>
+        <line x1="${rulerW}" y1="0" x2="${rulerW}" y2="${plotH}" stroke="#0f172a" stroke-width="2.2"/>
+        <line x1="${rulerW}" y1="${plotH}" x2="${totalW}" y2="${plotH}" stroke="#0f172a" stroke-width="2" />
+        ${tickParts.join("")}
+        ${headLines.join("")}
+      </g>
     </svg>`;
   }
 
@@ -507,10 +678,12 @@
     const hMaxCm = Math.min(250, Math.max(200, Math.ceil(tallest / 5) * 5 + 30));
 
     const plotH = 300;
-    const rulerW = 48;
+    const chartViewH = plotH + RULER_UNIT_BAND;
+    const rulerW = 56;
     const n = rows.length;
     const colW = 56;
     const totalW = rulerW + n * colW;
+    const figureOverlayTopPct = (RULER_UNIT_BAND / chartViewH) * 100;
 
     const genderMod =
       cartoonGender === "Male"
@@ -533,14 +706,21 @@
         const hPx = Math.max(10, Math.round(statureToHeightPx(r.stature, hMaxCm, plotH)));
         const delay = (i * 0.12).toFixed(2);
         return `
-      <div class="cartoon-figure-slot" style="--sway-delay:${delay}s" title="${r.key}: ${r.stature.toFixed(1)} cm at age ${r.age}">
+      <div class="cartoon-figure-slot" data-quantile="${r.key}" style="--sway-delay:${delay}s" title="${r.key}: ${r.stature.toFixed(1)} cm at age ${r.age}">
         <div class="cartoon-figure" style="height:${hPx}px">
           <svg class="cartoon-figure-svg" viewBox="${FIGURE_VIEWBOX}" preserveAspectRatio="none" aria-hidden="true">
             <circle class="cartoon-head" cx="25" cy="20" r="15" fill="${r.color}" stroke="#111827" stroke-width="2.2"/>
+            <circle class="cartoon-eye" cx="19" cy="16.5" r="2.1" fill="#111827"/>
+            <circle class="cartoon-eye" cx="31" cy="16.5" r="2.1" fill="#111827"/>
+            <path class="cartoon-mouth-neutral" d="M20 27.5 L30 27.5" stroke="#111827" stroke-width="2" stroke-linecap="round" fill="none"/>
+            <path class="cartoon-mouth-smile" d="M17 26.5 Q25 34.5 33 26.5" stroke="#111827" stroke-width="2.2" stroke-linecap="round" fill="none"/>
             <path d="M25 36 L25 82" stroke="#111827" stroke-width="4.5" stroke-linecap="round"/>
-            <path d="M25 50 L10 68 M25 50 L40 68" stroke="#111827" stroke-width="3.2" stroke-linecap="round"/>
+            <path class="cartoon-arm-left" d="M25 50 L10 68" stroke="#111827" stroke-width="3.2" stroke-linecap="round"/>
+            <path class="cartoon-arm-right-rest" d="M25 50 L40 68" stroke="#111827" stroke-width="3.2" stroke-linecap="round"/>
+            <path class="cartoon-arm-right-wave" d="M25 50 L46 32" stroke="#111827" stroke-width="3.2" stroke-linecap="round"/>
             <path d="M25 82 L17 132 M25 82 L33 132" stroke="#111827" stroke-width="4.2" stroke-linecap="round"/>
           </svg>
+          <div class="cartoon-hi-bubble" aria-hidden="true">Hi!</div>
         </div>
       </div>`;
       })
@@ -555,9 +735,9 @@
     stage.innerHTML = `
       <div class="cartoon-measure">
         ${labelRow}
-        <div class="cartoon-chart-wrap" style="height:${plotH}px">
+        <div class="cartoon-chart-wrap" style="height:${chartViewH}px">
           ${measureSvg}
-          <div class="cartoon-figure-overlay">${figuresOverlay}</div>
+          <div class="cartoon-figure-overlay" style="top:${figureOverlayTopPct}%;bottom:0">${figuresOverlay}</div>
         </div>
         ${cmRow}
       </div>`;
@@ -568,6 +748,11 @@
       cap.textContent = p50
         ? `${cartoonGender === "All" ? "All genders" : cartoonGender}, age ${age}: median about ${p50.stature.toFixed(1)} cm. Cartoon scale 0–${hMaxCm} cm (feet at 0).`
         : "";
+    }
+
+    if (pendingCartoonHiKey && rows.some(r => r.key === pendingCartoonHiKey)) {
+      const el = document.querySelector(`.cartoon-figure-slot[data-quantile="${pendingCartoonHiKey}"]`);
+      if (el) el.classList.add("cartoon-figure-slot--hi");
     }
   }
 

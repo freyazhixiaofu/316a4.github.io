@@ -26,7 +26,20 @@
         <div id="quantile-layout">
           <div id="quantile-chart-column">
             <svg id="quantile-chart"></svg>
-            <svg id="quantile-context-chart"></svg>
+            <div class="quantile-context-wrap">
+              <div class="quantile-brush-label">
+                <img
+                  class="quantile-brush-label-img"
+                  src="OIP.webp"
+                  width="56"
+                  height="56"
+                  alt=""
+                  decoding="async"
+                />
+                <span class="quantile-brush-label-text">Brush<br />Click the strip again (or here) to reset.</span>
+              </div>
+              <svg id="quantile-context-chart" aria-label="Age brush for the chart above"></svg>
+            </div>
             <div id="quantile-chart-legend" class="quantile-legend-html" aria-label="Quantile line colors"></div>
           </div>
           <aside id="quantile-sidebar" aria-label="Cartoon height preview">
