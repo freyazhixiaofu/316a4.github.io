@@ -14,7 +14,6 @@
       <span class="note">(cross-sectional, not following the same people over time)</span>
     </p>
   </header>
-
   <main>
     <section id="controls">
       <div class="control-group">
@@ -29,6 +28,11 @@
         <button id="ruler-remove" class="tool-toggle" type="button" disabled>Remove ruler</button>
         <span class="hint">Draw a rectangle on the chart, then drag it.</span>
       </div>
+      <div class="control-group">
+        <span class="control-label">View:</span>
+        <button id="color-mode-toggle" class="tool-toggle" type="button">Color: Distinct (Cartoon)</button>
+        <button id="sort-mode-toggle" class="tool-toggle" type="button">Sort: Height</button>
+      </div>
       <p class="explanation">
         Each vertical stack shows the height distribution for an age bin.
         Childhood uses finer age bins where growth is rapid (yearly under 10, every 2 years from 10–20),
@@ -38,6 +42,7 @@
 
     <section id="chart-container">
       <svg id="height-chart"></svg>
+      <div id="height-legend" aria-label="Height color legend"></div>
       <div id="chart-caption">
         <p>
           For each age, thin vertical rectangles show how common each height is.
@@ -45,6 +50,41 @@
           Switch genders above to approximate a life-course profile
           by comparing cross-sectional height distributions.
         </p>
+      </div>
+    </section>
+
+    <section id="quantile-section">
+      <button id="quantile-view-button" class="tool-toggle" type="button">Quantile Height Curves</button>
+      <div class="control-group" id="quantile-controls">
+        <span class="control-label">Quantile Gender:</span>
+        <button class="gender-toggle quantile-gender-toggle active" data-quantile-gender="All">All</button>
+        <button class="gender-toggle quantile-gender-toggle" data-quantile-gender="Male">Male</button>
+        <button class="gender-toggle quantile-gender-toggle" data-quantile-gender="Female">Female</button>
+      </div>
+      <div id="quantile-chart-card">
+        <div id="quantile-layout">
+          <div id="quantile-chart-column">
+            <svg id="quantile-chart"></svg>
+            <svg id="quantile-context-chart"></svg>
+            <div id="quantile-chart-legend" class="quantile-legend-html" aria-label="Quantile line colors"></div>
+          </div>
+          <aside id="quantile-sidebar" aria-label="Cartoon height preview">
+            <h2 class="quantile-sidebar-title">Height cartoons</h2>
+            <p class="quantile-sidebar-hint">Tune age and gender; stick figures scale to the same quantiles as the chart.</p>
+            <div class="control-group cartoon-controls">
+              <span class="control-label cartoon-label">Cartoon gender:</span>
+              <button type="button" class="gender-toggle cartoon-gender-toggle active" data-cartoon-gender="All">All</button>
+              <button type="button" class="gender-toggle cartoon-gender-toggle" data-cartoon-gender="Male">Male</button>
+              <button type="button" class="gender-toggle cartoon-gender-toggle" data-cartoon-gender="Female">Female</button>
+            </div>
+            <div class="cartoon-age-row">
+              <label class="cartoon-age-label" for="cartoon-age">Age: <strong id="cartoon-age-value">30</strong> y</label>
+              <input id="cartoon-age" type="range" min="2" max="80" value="30" />
+            </div>
+            <div id="cartoon-stage" class="cartoon-stage"></div>
+            <p id="cartoon-caption" class="cartoon-caption"></p>
+          </aside>
+        </div>
       </div>
     </section>
   </main>

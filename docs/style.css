@@ -156,6 +156,232 @@ main {
   border: 3px solid #111827;
 }
 
+#quantile-section {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+#quantile-view-button {
+  width: fit-content;
+}
+
+#quantile-chart-card {
+  background: #f2f2f2;
+  border: 2px solid #c9c9c9;
+  border-radius: 6px;
+  padding: 0.8rem 0.9rem;
+}
+
+#quantile-layout {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 1rem;
+}
+
+#quantile-chart-column {
+  flex: 1 1 58%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#quantile-sidebar {
+  flex: 0 0 min(320px, 38%);
+  max-width: 380px;
+  background: linear-gradient(180deg, #fffefb 0%, #eef6ff 100%);
+  border: 3px solid #111827;
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem 1rem;
+  box-shadow: 0 8px 0 rgba(17, 24, 39, 0.12);
+}
+
+.quantile-sidebar-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.quantile-sidebar-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  color: #374151;
+  line-height: 1.35;
+}
+
+#quantile-sidebar .control-label.cartoon-label {
+  color: #1f2937;
+}
+
+.cartoon-controls {
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.cartoon-age-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+}
+
+.cartoon-age-label {
+  font-size: 0.85rem;
+  color: #111827;
+}
+
+#cartoon-age {
+  width: 100%;
+  accent-color: #4361ee;
+  cursor: pointer;
+}
+
+.cartoon-stage {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  min-height: 210px;
+  padding: 0.5rem 0.25rem;
+  background: rgba(255, 255, 255, 0.65);
+  border-radius: 10px;
+  border: 2px dashed #94a3b8;
+}
+
+.cartoon-stage--male .cartoon-head {
+  filter: saturate(1.15) hue-rotate(-8deg);
+}
+
+.cartoon-stage--female .cartoon-head {
+  filter: saturate(1.1) hue-rotate(12deg);
+}
+
+.cartoon-stage--all .cartoon-head {
+  filter: saturate(1.05);
+}
+
+.cartoon-figure-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: calc(11% - 4px);
+  min-width: 26px;
+  max-width: 44px;
+}
+
+.cartoon-figure-label {
+  font-size: 0.58rem;
+  font-weight: 900;
+  color: #111827;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.cartoon-figure {
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  transition: height 0.45s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.cartoon-figure-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  animation: cartoon-sway 2.8s ease-in-out infinite;
+  animation-delay: var(--sway-delay, 0s);
+  transform-origin: 50% 100%;
+}
+
+@keyframes cartoon-sway {
+  0%,
+  100% {
+    transform: rotate(-2deg) translateY(0);
+  }
+  50% {
+    transform: rotate(2deg) translateY(-2px);
+  }
+}
+
+.cartoon-cm {
+  font-size: 0.55rem;
+  font-weight: 800;
+  color: #334155;
+  margin-top: 2px;
+}
+
+.cartoon-caption {
+  margin: 0.5rem 0 0;
+  font-size: 0.72rem;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.cartoon-empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.quantile-legend-html {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.5rem;
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 8px;
+  border: 1px solid #bbb;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.quantile-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.quantile-legend-swatch {
+  width: 16px;
+  height: 8px;
+  border-radius: 2px;
+  border: 1px solid #111827;
+}
+
+@media (max-width: 960px) {
+  #quantile-layout {
+    flex-direction: column;
+  }
+
+  #quantile-sidebar {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+
+  .cartoon-figure-wrap {
+    width: calc(20% - 4px);
+  }
+}
+
+#quantile-chart {
+  width: 100%;
+  height: 560px;
+}
+
+#quantile-context-chart {
+  width: 100%;
+  height: 130px;
+  margin-top: 0.35rem;
+}
+
 #height-chart {
   width: 100%;
   height: 520px;
@@ -166,6 +392,39 @@ main {
   font-size: 0.8rem;
   color: #9aa5ce;
   max-width: 800px;
+}
+
+#height-legend {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 12px;
+  border: 2px solid #111827;
+  background: rgba(255, 255, 255, 0.65);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.legend-swatch {
+  width: 18px;
+  height: 12px;
+  border: 2px solid #111827;
+  border-radius: 4px;
+}
+
+.legend-label {
+  color: #111827;
 }
 
 footer {
@@ -221,4 +480,13 @@ code {
   font-size: 0.75rem;
   border: 2px solid #111827;
   box-shadow: 0 12px 30px rgba(2, 6, 23, 0.18);
+}
+
+.quantile-tooltip {
+  z-index: 50;
+  font-weight: 700;
+}
+
+.quantile-tooltip strong {
+  font-size: 0.85rem;
 }
