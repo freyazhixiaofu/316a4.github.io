@@ -15,46 +15,7 @@
     </p>
   </header>
   <main>
-    <section id="controls">
-      <div class="control-group">
-        <span class="control-label">Gender:</span>
-        <button class="gender-toggle active" data-gender="All">All</button>
-        <button class="gender-toggle" data-gender="Male">Male</button>
-        <button class="gender-toggle" data-gender="Female">Female</button>
-      </div>
-      <div class="control-group">
-        <span class="control-label">Ruler:</span>
-        <button id="ruler-draw" class="tool-toggle" type="button">Draw ruler</button>
-        <button id="ruler-remove" class="tool-toggle" type="button" disabled>Remove ruler</button>
-        <span class="hint">Draw a rectangle on the chart, then drag it.</span>
-      </div>
-      <div class="control-group">
-        <span class="control-label">View:</span>
-        <button id="color-mode-toggle" class="tool-toggle" type="button">Color: Distinct (Cartoon)</button>
-        <button id="sort-mode-toggle" class="tool-toggle" type="button">Sort: Height</button>
-      </div>
-      <p class="explanation">
-        Each vertical stack shows the height distribution for an age bin.
-        Childhood uses finer age bins where growth is rapid (yearly under 10, every 2 years from 10–20),
-        and adulthood uses coarser bins (every 5 years above 20) to reduce clutter as changes slow down.
-      </p>
-    </section>
-
-    <section id="chart-container">
-      <svg id="height-chart"></svg>
-      <div id="height-legend" aria-label="Height color legend"></div>
-      <div id="chart-caption">
-        <p>
-          For each age, thin vertical rectangles show how common each height is.
-          Taller rectangles mean a higher percentage of people at that height.
-          Switch genders above to approximate a life-course profile
-          by comparing cross-sectional height distributions.
-        </p>
-      </div>
-    </section>
-
     <section id="quantile-section">
-      <button id="quantile-view-button" class="tool-toggle" type="button">Quantile Height Curves</button>
       <div class="control-group" id="quantile-controls">
         <span class="control-label">Quantile Gender:</span>
         <button class="gender-toggle quantile-gender-toggle active" data-quantile-gender="All">All</button>
@@ -93,6 +54,9 @@
     <p>
       Data: NHANES Body Measures (BMX_L) and Demographics (DEMO_L)
       processed locally into <code>docs/data/height_distributions_by_age_gender.json</code>.
+    </p>
+    <p class="footer-extra">
+      <a href="stack.html">Open the stacked height distribution view</a> (separate page).
     </p>
   </footer>
 

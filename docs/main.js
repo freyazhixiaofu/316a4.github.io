@@ -1,32 +1,8 @@
 (function () {
-  const svg = d3.select("#height-chart");
-  const width = parseInt(svg.style("width"), 10) || 900;
-  const height = parseInt(svg.style("height"), 10) || 520;
-  const margin = { top: 30, right: 20, bottom: 60, left: 60 };
+  function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+  }
 
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
-
-  const g = svg
-    .attr("viewBox", `0 0 ${width} ${height}`)
-    .append("g")
-    .attr("transform", `translate(${margin.left},${margin.top})`);
-
-  // Overlay layer for drawing/dragging "cartoon ruler"
-  const overlay = g.append("g").attr("class", "overlay-layer");
-  const overlayHitbox = overlay
-    .append("rect")
-    .attr("x", 0)
-    .attr("y", 0)
-    .attr("width", innerWidth)
-    .attr("height", innerHeight)
-    .attr("fill", "transparent")
-    .style("cursor", "default")
-    // Prevent blocking hover/tooltips on the stacked rectangles.
-    .style("pointer-events", "none");
-
-  const xScale = d3.scaleBand().padding(0.1);
-  const yScale = d3.scaleLinear();
   const quantileSvg = d3.select("#quantile-chart");
   const quantileContextSvg = d3.select("#quantile-context-chart");
   const quantileWidth = parseInt(quantileSvg.style("width"), 10) || 940;
@@ -87,43 +63,6 @@
     return Math.abs(a.age - age) <= Math.abs(b.age - age) ? a : b;
   }
 
-  // Distinct "cartoon" palette (no gradients)
-  const CARTOON_COLORS = [
-    "#ff595e", "#ffca3a", "#8ac926", "#1982c4", "#6a4c93",
-    "#ff924c", "#ffd6a5", "#caffbf", "#9bf6ff", "#a0c4ff",
-    "#bdb2ff", "#ffc6ff", "#f72585", "#b5179e", "#7209b7",
-    "#3a0ca3", "#4361ee", "#4cc9f0", "#2ec4b6", "#f77f00",
-    "#d62828", "#00b4d8", "#52b788", "#ef476f"
-  ];
-
-  const colorScale = d3.scaleOrdinal(CARTOON_COLORS);
-
-  const xAxisGroup = g.append("g").attr("class", "axis x-axis").attr("transform", `translate(0,${innerHeight})`);
-  const yAxisGroup = g.append("g").attr("class", "axis y-axis");
-
-  g.append("text")
-    .attr("x", innerWidth / 2)
-    .attr("y", innerHeight + 40)
-    .attr("fill", "#c0caf5")
-    .attr("text-anchor", "middle")
-    .attr("font-size", 12)
-    .text("Age (binned)");
-
-  g.append("text")
-    .attr("x", -innerHeight / 2)
-    .attr("y", -40)
-    .attr("transform", "rotate(-90)")
-    .attr("fill", "#c0caf5")
-    .attr("text-anchor", "middle")
-    .attr("font-size", 12)
-    .text("How common within age bin");
-
-  const tooltip = d3
-    .select("body")
-    .append("div")
-    .attr("class", "tooltip")
-    .style("opacity", 0);
-
   const quantileTooltip = d3
     .select("body")
     .append("div")
@@ -132,159 +71,12 @@
     .style("pointer-events", "none");
 
   let allData = [];
-  let currentGender = "All";
   let currentQuantileGender = "All";
   let cartoonGender = "All";
   let cartoonAge = 30;
-  let allBinStartsGlobal = [];
-  let colorMode = "cartoon"; // cartoon | gradient
-  let sortMode = "height"; // height | commonness
-  let drawRulerMode = false;
-  let ruler = null; // { group, rect, labelText, labelBg, closeGroup }
-
-  function formatAge(age) {
-    return age.toString();
-  }
-
-  function getColor(binStart) {
-    if (colorMode === "gradient") {
-      const minBin = d3.min(allBinStartsGlobal);
-      const maxBin = d3.max(allBinStartsGlobal);
-      const t = (binStart - minBin) / Math.max(1, (maxBin - minBin));
-      return d3.interpolatePlasma(t);
-    }
-    return colorScale(binStart);
-  }
-
-  function renderLegend() {
-    const legend = d3.select("#height-legend");
-    if (legend.empty()) return;
-
-    legend.html("");
-    const items = legend
-      .selectAll(".legend-item")
-      .data(allBinStartsGlobal)
-      .enter()
-      .append("div")
-      .attr("class", "legend-item");
-
-    items
-      .append("span")
-      .attr("class", "legend-swatch")
-      .style("background", d => getColor(d))
-      .style("border-color", "#111827");
-
-    items
-      .append("span")
-      .attr("class", "legend-label")
-      .text(d => `${d}–${d + 5} cm`);
-  }
-
-  function setRulerButtons() {
-    const drawBtn = document.getElementById("ruler-draw");
-    const removeBtn = document.getElementById("ruler-remove");
-    if (!drawBtn || !removeBtn) return;
-
-    drawBtn.classList.toggle("active", drawRulerMode);
-    removeBtn.disabled = !ruler;
-  }
-
-  function removeRuler() {
-    if (ruler) {
-      ruler.group.remove();
-      ruler = null;
-    }
-    drawRulerMode = false;
-    overlayHitbox
-      .style("cursor", "default")
-      .style("pointer-events", "none");
-    setRulerButtons();
-  }
-
-  function clamp(v, min, max) {
-    return Math.max(min, Math.min(max, v));
-  }
-
-  function updateRulerLabel() {
-    if (!ruler) return;
-    const x = +ruler.rect.attr("x");
-    const y = +ruler.rect.attr("y");
-    const w = +ruler.rect.attr("width");
-    const h = +ruler.rect.attr("height");
-
-    const percentHeight = clamp((h / innerHeight) * 100, 0, 100);
-    const label = `${percentHeight.toFixed(1)}% tall`;
-
-    ruler.labelText.text(label);
-    const bbox = ruler.labelText.node().getBBox();
-    const labelW = bbox.width + 16;
-    const labelH = bbox.height + 10;
-
-    // place label at upper-left of ruler (outside if possible)
-    let lx = x - labelW - 8;
-    let ly = y - labelH - 8;
-    // keep it inside the plot area
-    lx = clamp(lx, 0, innerWidth - labelW);
-    ly = clamp(ly, 0, innerHeight - labelH);
-
-    ruler.labelBg
-      .attr("x", lx)
-      .attr("y", ly)
-      .attr("width", labelW)
-      .attr("height", labelH);
-    ruler.labelText
-      .attr("x", lx + 8)
-      .attr("y", ly + 8 + bbox.height - 2);
-
-    ruler.closeGroup.attr("transform", `translate(${x + w - 14},${y + 14})`);
-  }
-
-  function attachRulerDrag() {
-    if (!ruler) return;
-    ruler.group.call(
-      d3.drag().on("drag", (event) => {
-        const w = +ruler.rect.attr("width");
-        const h = +ruler.rect.attr("height");
-        const newX = clamp((+ruler.rect.attr("x")) + event.dx, 0, innerWidth - w);
-        const newY = clamp((+ruler.rect.attr("y")) + event.dy, 0, innerHeight - h);
-        ruler.rect.attr("x", newX).attr("y", newY);
-        updateRulerLabel();
-      })
-    );
-  }
-
-  function createRuler(x0, y0, x1, y1) {
-    // normalize
-    const x = Math.min(x0, x1);
-    const y = Math.min(y0, y1);
-    const w = Math.abs(x1 - x0);
-    const h = Math.abs(y1 - y0);
-
-    const group = overlay.append("g").attr("class", "ruler-group");
-    const rect = group.append("rect").attr("class", "ruler-rect");
-    const labelBg = group.append("rect").attr("class", "ruler-label-bg");
-    const labelText = group.append("text").attr("class", "ruler-label");
-
-    const closeGroup = group.append("g").attr("class", "ruler-close");
-    closeGroup.append("circle").attr("r", 10);
-    closeGroup.append("text").text("×").attr("y", 1);
-    closeGroup.on("click", (event) => {
-      event.stopPropagation();
-      removeRuler();
-    });
-
-    ruler = { group, rect, labelBg, labelText, closeGroup };
-    rect.attr("x", x).attr("y", y).attr("width", w).attr("height", h);
-    updateRulerLabel();
-    attachRulerDrag();
-    // ensure ruler is always on top of stacks/axes
-    overlay.raise();
-    setRulerButtons();
-  }
 
   function getFilteredData(gender) {
     if (gender === "All") {
-      // combine male + female by summing counts, then recompute percent per age_bin
       const merged = d3.rollups(
         allData,
         v => d3.sum(v, d => d.count),
@@ -369,7 +161,6 @@
       .attr("font-size", 16)
       .text("Stature (cm)");
 
-    // Above grid/axes in paint order so pointer events reach the overlay (not the grid lines).
     quantileHitRect = quantileG
       .append("rect")
       .attr("class", "quantile-hit-overlay")
@@ -436,7 +227,7 @@
     quantileBrush = d3
       .brushX()
       .extent([[0, 0], [quantileContextInnerWidth, quantileContextInnerHeight]])
-      .on("brush end", (event) => {
+      .on("brush end", event => {
         if (!latestQuantileSeries.length) return;
         if (!event.selection) {
           quantileBrushDomain = null;
@@ -515,13 +306,13 @@
     if (quantileHitRect) quantileHitRect.raise();
   }
 
-
   function renderQuantileContext(p50Values, yDomain) {
     if (!quantileContextBuilt || !p50Values.length) return;
     const xContext = d3.scaleLinear().domain([2, 80]).range([0, quantileContextInnerWidth]);
     const yContext = d3.scaleLinear().domain(yDomain).range([quantileContextInnerHeight, 0]);
 
-    const area = d3.area()
+    const area = d3
+      .area()
       .x(d => xContext(d.age))
       .y0(quantileContextInnerHeight)
       .y1(d => yContext(d.stature))
@@ -626,6 +417,73 @@
       .filter(Boolean);
   }
 
+  /** Tight viewBox around stick figure: head top (y=5) through feet (y≈132) — matches ruler pixel height. */
+  const FIGURE_VIEWBOX = "0 5 50 127";
+
+  /** Feet at cm=0 (bottom); top of chart = H_CEILING cm. */
+  function statureToY(stature, hMaxCm, plotH) {
+    const cap = Math.max(hMaxCm, 1e-6);
+    const s = Math.min(Math.max(stature, 0), cap);
+    return plotH * ((cap - s) / cap);
+  }
+
+  function statureToHeightPx(stature, hMaxCm, plotH) {
+    const cap = Math.max(hMaxCm, 1e-6);
+    const s = Math.min(Math.max(stature, 0), cap);
+    return plotH * (s / cap);
+  }
+
+  /**
+   * Ruler 0…H_CEILING cm + horizontal head guides. viewBox width = rulerW + n * colW.
+   */
+  function buildCartoonMeasureSvg(rows, hMaxCm, plotH, rulerW, colW) {
+    const n = rows.length;
+    const totalW = rulerW + n * colW;
+    const yAt = cm => statureToY(cm, hMaxCm, plotH);
+
+    const tickParts = [];
+    for (let cm = 0; cm <= hMaxCm; cm++) {
+      const y = yAt(cm);
+      if (y < -0.5 || y > plotH + 0.5) continue;
+      const isTen = cm % 10 === 0;
+      const isFive = cm % 5 === 0;
+      const tickLen = isTen ? 16 : isFive ? 10 : 5;
+      const stroke = isTen ? "#1e293b" : isFive ? "#64748b" : "#cbd5e1";
+      const sw = isTen ? 1.45 : isFive ? 1.1 : 0.85;
+      tickParts.push(
+        `<line x1="${rulerW - tickLen}" y1="${y}" x2="${rulerW}" y2="${y}" stroke="${stroke}" stroke-width="${sw}" />`
+      );
+      if (isTen) {
+        const ty = cm === 0 ? plotH - 4 : y + 3.5;
+        tickParts.push(
+          `<text x="${rulerW - tickLen - 4}" y="${ty}" text-anchor="end" class="cartoon-ruler-tick-label">${cm}</text>`
+        );
+      }
+    }
+
+    const headLines = rows.map((r, i) => {
+      const y = yAt(r.stature);
+      const x0 = rulerW;
+      const x1 = rulerW + i * colW + colW * 0.5;
+      return `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${r.color}" stroke-width="2" stroke-opacity="0.95" stroke-linecap="round" />`;
+    });
+
+    return `<svg class="cartoon-measure-svg" viewBox="0 0 ${totalW} ${plotH}" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <pattern id="cartoon-ruler-hatch" width="4" height="4" patternUnits="userSpaceOnUse">
+          <path d="M0 4 L4 0" stroke="#e2e8f0" stroke-width="0.6"/>
+        </pattern>
+      </defs>
+      <rect x="0" y="0" width="${rulerW}" height="${plotH}" fill="#faf8f5" stroke="#cbd5e1" stroke-width="1.2"/>
+      <rect x="0" y="0" width="${rulerW}" height="${plotH}" fill="url(#cartoon-ruler-hatch)" opacity="0.35"/>
+      <line x1="${rulerW}" y1="0" x2="${rulerW}" y2="${plotH}" stroke="#0f172a" stroke-width="2.2"/>
+      <line x1="${rulerW}" y1="${plotH}" x2="${totalW}" y2="${plotH}" stroke="#0f172a" stroke-width="2" />
+      <text x="6" y="14" class="cartoon-ruler-title">cm</text>
+      ${tickParts.join("")}
+      ${headLines.join("")}
+    </svg>`;
+  }
+
   function updateCartoonSidebar() {
     const stage = document.getElementById("cartoon-stage");
     const ageVal = document.getElementById("cartoon-age-value");
@@ -645,42 +503,70 @@
       stage.innerHTML = '<p class="cartoon-empty">No data for this selection.</p>';
       return;
     }
-    const sMin = d3.min(rows, d => d.stature);
-    const sMax = d3.max(rows, d => d.stature);
-    const hScale =
-      sMax - sMin < 0.5
-        ? () => 130
-        : d3.scaleLinear().domain([sMin, sMax]).range([68, 200]);
+    const tallest = d3.max(rows, d => d.stature);
+    const hMaxCm = Math.min(250, Math.max(200, Math.ceil(tallest / 5) * 5 + 30));
+
+    const plotH = 300;
+    const rulerW = 48;
+    const n = rows.length;
+    const colW = 56;
+    const totalW = rulerW + n * colW;
 
     const genderMod =
-      cartoonGender === "Male" ? "cartoon-stage--male" : cartoonGender === "Female" ? "cartoon-stage--female" : "cartoon-stage--all";
+      cartoonGender === "Male"
+        ? "cartoon-stage--male"
+        : cartoonGender === "Female"
+          ? "cartoon-stage--female"
+          : "cartoon-stage--all";
     stage.className = `cartoon-stage ${genderMod}`;
 
-    stage.innerHTML = rows
+    const measureSvg = buildCartoonMeasureSvg(rows, hMaxCm, plotH, rulerW, colW);
+
+    const labelRow = `
+      <div class="cartoon-label-row">
+        <div class="cartoon-label-ruler-gap" aria-hidden="true"></div>
+        ${rows.map(r => `<span class="cartoon-figure-label">${r.key}</span>`).join("")}
+      </div>`;
+
+    const figuresOverlay = `<div class="cartoon-overlay-ruler-cell" aria-hidden="true"></div>${rows
       .map((r, i) => {
-        const h = Math.round(hScale(r.stature));
+        const hPx = Math.max(10, Math.round(statureToHeightPx(r.stature, hMaxCm, plotH)));
         const delay = (i * 0.12).toFixed(2);
         return `
-      <div class="cartoon-figure-wrap" style="--sway-delay:${delay}s" title="${r.key}: ${r.stature.toFixed(1)} cm at age ${r.age}">
-        <span class="cartoon-figure-label">${r.key}</span>
-        <div class="cartoon-figure" style="height:${h}px">
-          <svg class="cartoon-figure-svg" viewBox="0 0 50 140" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+      <div class="cartoon-figure-slot" style="--sway-delay:${delay}s" title="${r.key}: ${r.stature.toFixed(1)} cm at age ${r.age}">
+        <div class="cartoon-figure" style="height:${hPx}px">
+          <svg class="cartoon-figure-svg" viewBox="${FIGURE_VIEWBOX}" preserveAspectRatio="none" aria-hidden="true">
             <circle class="cartoon-head" cx="25" cy="20" r="15" fill="${r.color}" stroke="#111827" stroke-width="2.2"/>
             <path d="M25 36 L25 82" stroke="#111827" stroke-width="4.5" stroke-linecap="round"/>
             <path d="M25 50 L10 68 M25 50 L40 68" stroke="#111827" stroke-width="3.2" stroke-linecap="round"/>
             <path d="M25 82 L17 132 M25 82 L33 132" stroke="#111827" stroke-width="4.2" stroke-linecap="round"/>
           </svg>
         </div>
-        <span class="cartoon-cm">${r.stature.toFixed(0)}</span>
       </div>`;
       })
-      .join("");
+      .join("")}`;
+
+    const cmRow = `
+      <div class="cartoon-cm-row">
+        <div class="cartoon-cm-ruler-gap" aria-hidden="true"></div>
+        ${rows.map(r => `<span class="cartoon-cm">${r.stature.toFixed(0)} cm</span>`).join("")}
+      </div>`;
+
+    stage.innerHTML = `
+      <div class="cartoon-measure">
+        ${labelRow}
+        <div class="cartoon-chart-wrap" style="height:${plotH}px">
+          ${measureSvg}
+          <div class="cartoon-figure-overlay">${figuresOverlay}</div>
+        </div>
+        ${cmRow}
+      </div>`;
 
     const cap = document.getElementById("cartoon-caption");
     if (cap) {
       const p50 = rows.find(r => r.key === "P50");
       cap.textContent = p50
-        ? `${cartoonGender === "All" ? "All genders" : cartoonGender}, age ${age}: median about ${p50.stature.toFixed(1)} cm (NHANES-based quantiles).`
+        ? `${cartoonGender === "All" ? "All genders" : cartoonGender}, age ${age}: median about ${p50.stature.toFixed(1)} cm. Cartoon scale 0–${hMaxCm} cm (feet at 0).`
         : "";
     }
   }
@@ -707,15 +593,6 @@
     });
   }
 
-  function setupQuantileButton() {
-    const button = document.getElementById("quantile-view-button");
-    const card = document.getElementById("quantile-chart-card");
-    if (!button || !card) return;
-    button.addEventListener("click", () => {
-      card.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }
-
   function setupQuantileGenderButtons() {
     const buttons = d3.selectAll(".quantile-gender-toggle");
     if (buttons.empty()) return;
@@ -729,243 +606,6 @@
     });
   }
 
-  function updateChart(gender) {
-    currentGender = gender;
-    const data = getFilteredData(gender);
-    updateQuantileChart(currentQuantileGender);
-
-    const ages = Array.from(new Set(data.map(d => d.age_bin))).sort((a, b) => a - b);
-    const heightMin = d3.min(data, d => d.height_cm);
-    const heightMax = d3.max(data, d => d.height_cm);
-
-    xScale.domain(ages).range([0, innerWidth]);
-    // y axis is cumulative share (0 to 1)
-    yScale.domain([0, 1]).range([innerHeight, 0]);
-    // domain is all 5cm binStarts we will draw (set below after stacking)
-
-    const bandWidth = xScale.bandwidth();
-    const rectWidth = Math.max(4, bandWidth * 0.9);
-
-    xAxisGroup
-      .transition()
-      .duration(500)
-      .call(
-        d3
-          .axisBottom(xScale)
-          // show all youth bins; show decade midpoints (25,35,...) for adults
-          .tickValues(ages.filter(a => a < 20 || a % 10 === 5))
-          .tickFormat(formatAge)
-      );
-
-    yAxisGroup
-      .transition()
-      .duration(500)
-      .call(
-        d3
-          .axisLeft(yScale)
-          .ticks(5)
-          .tickFormat(d => `${Math.round(d * 100)}%`)
-      );
-
-    // Group heights into 5 cm bins (e.g., 100–105, 105–110, ...)
-    const byAge = d3.group(data, d => d.age_bin);
-    const stacked = [];
-
-    byAge.forEach((values, age) => {
-      // aggregate cm-level data into 5cm bins
-      const binMap = d3.rollup(
-        values,
-        v => d3.sum(v, d => d.percent),
-        d => 5 * Math.floor(d.height_cm / 5) // bin start
-      );
-
-      const bins = Array.from(binMap, ([binStart, percent]) => ({
-        binStart,
-        binEnd: binStart + 5,
-        percent
-      }));
-
-      if (sortMode === "commonness") {
-        bins.sort((a, b) => {
-          if (b.percent !== a.percent) return b.percent - a.percent;
-          return a.binStart - b.binStart;
-        });
-      } else {
-        bins.sort((a, b) => a.binStart - b.binStart);
-      }
-
-      let cumulative = 0;
-      bins.forEach(b => {
-        const y0 = cumulative;
-        const y1 = cumulative + b.percent;
-        cumulative = y1;
-        stacked.push({
-          age_bin: age,
-          binStart: b.binStart,
-          binEnd: b.binEnd,
-          percent: b.percent,
-          y0,
-          y1
-        });
-      });
-    });
-
-    const cells = g.selectAll(".rect-cell").data(
-      stacked,
-      d => `${d.age_bin}-${d.binStart}-${gender}`
-    );
-
-    cells
-      .enter()
-      .append("rect")
-      .attr("class", "rect-cell")
-      .attr("x", d => (xScale(d.age_bin) ?? 0) + (bandWidth - rectWidth) / 2)
-      .attr("width", rectWidth)
-      .attr("y", d => yScale(d.y1))
-      .attr("height", 0)
-      .attr("fill", d => getColor(d.binStart))
-      .attr("opacity", 0.95)
-      .on("mouseover", (event, d) => {
-        tooltip
-          .style("opacity", 1)
-          .html(
-            `Age bin: ${d.age_bin}<br/>` +
-              `Height: ${d.binStart}–${d.binEnd} cm<br/>` +
-              `How common: ${(d.percent * 100).toFixed(1)}%` +
-              `<br/>Cumulative: ${(d.y1 * 100).toFixed(1)}%`
-          )
-          .style("left", event.pageX + 10 + "px")
-          .style("top", event.pageY - 28 + "px");
-      })
-      .on("mousemove", event => {
-        tooltip.style("left", event.pageX + 10 + "px").style("top", event.pageY - 28 + "px");
-      })
-      .on("mouseout", () => {
-        tooltip.style("opacity", 0);
-      })
-      .transition()
-      .duration(500)
-      .attr("height", d => yScale(d.y0) - yScale(d.y1))
-      .attr("opacity", 0.95);
-
-    cells
-      .transition()
-      .duration(500)
-      .attr("x", d => (xScale(d.age_bin) ?? 0) + (bandWidth - rectWidth) / 2)
-      .attr("width", rectWidth)
-      .attr("y", d => yScale(d.y1))
-      .attr("height", d => yScale(d.y0) - yScale(d.y1))
-      .attr("fill", d => getColor(d.binStart))
-      .attr("opacity", 0.95);
-
-    cells
-      .exit()
-      .transition()
-      .duration(300)
-      .attr("opacity", 0)
-      .remove();
-
-    // keep overlay layer (ruler) above chart stacks
-    overlay.raise();
-  }
-
-  function setupGenderButtons() {
-    const buttons = d3.selectAll(".gender-toggle");
-    buttons.on("click", function () {
-      const gender = this.getAttribute("data-gender");
-      buttons.classed("active", false);
-      d3.select(this).classed("active", true);
-      updateChart(gender);
-    });
-  }
-
-  function setupViewButtons() {
-    const colorBtn = document.getElementById("color-mode-toggle");
-    const sortBtn = document.getElementById("sort-mode-toggle");
-    if (!colorBtn || !sortBtn) return;
-
-    colorBtn.addEventListener("click", () => {
-      colorMode = colorMode === "cartoon" ? "gradient" : "cartoon";
-      colorBtn.textContent = `Color: ${colorMode === "cartoon" ? "Cartoon" : "Gradient"}`;
-      renderLegend();
-      updateChart(currentGender);
-    });
-
-    sortBtn.addEventListener("click", () => {
-      sortMode = sortMode === "height" ? "commonness" : "height";
-      sortBtn.textContent = `Sort: ${sortMode === "height" ? "Height" : "How common"}`;
-      updateChart(currentGender);
-    });
-  }
-
-  function setupRulerTools() {
-    const drawBtn = document.getElementById("ruler-draw");
-    const removeBtn = document.getElementById("ruler-remove");
-    if (!drawBtn || !removeBtn) return;
-
-    drawBtn.addEventListener("click", () => {
-      drawRulerMode = !drawRulerMode;
-      overlayHitbox
-        .style("cursor", drawRulerMode ? "crosshair" : "default")
-        .style("pointer-events", drawRulerMode ? "all" : "none");
-      setRulerButtons();
-    });
-
-    removeBtn.addEventListener("click", () => removeRuler());
-
-    let drawing = false;
-    let start = null;
-
-    overlayHitbox.on("pointerdown", (event) => {
-      if (!drawRulerMode) return;
-      event.preventDefault();
-      if (ruler) removeRuler(); // single ruler at a time
-      drawing = true;
-      // Capture pointer so drawing continues even if cursor
-      // moves over other SVG elements or outside the hitbox.
-      const node = overlayHitbox.node();
-      if (node && node.setPointerCapture) {
-        try {
-          node.setPointerCapture(event.pointerId);
-        } catch (_) {
-          // ignore if capture fails
-        }
-      }
-      const [mx, my] = d3.pointer(event, g.node());
-      start = [clamp(mx, 0, innerWidth), clamp(my, 0, innerHeight)];
-      createRuler(start[0], start[1], start[0] + 1, start[1] + 1);
-    });
-
-    overlayHitbox.on("pointermove", (event) => {
-      if (!drawRulerMode || !drawing || !start || !ruler) return;
-      const [mx, my] = d3.pointer(event, g.node());
-      const x1 = clamp(mx, 0, innerWidth);
-      const y1 = clamp(my, 0, innerHeight);
-      const x0 = start[0];
-      const y0 = start[1];
-      const x = Math.min(x0, x1);
-      const y = Math.min(y0, y1);
-      const w = Math.abs(x1 - x0);
-      const h = Math.abs(y1 - y0);
-      ruler.rect.attr("x", x).attr("y", y).attr("width", w).attr("height", h);
-      updateRulerLabel();
-    });
-
-    const finish = () => {
-      if (!drawing) return;
-      drawing = false;
-      start = null;
-      drawRulerMode = false;
-      overlayHitbox
-        .style("cursor", "default")
-        .style("pointer-events", "none");
-      setRulerButtons();
-    };
-
-    overlayHitbox.on("pointerup", finish);
-    overlayHitbox.on("pointercancel", finish);
-  }
-
   d3.json("data/height_distributions_by_age_gender.json").then(json => {
     allData = json.map(d => ({
       age_bin: +d.age_bin,
@@ -975,20 +615,9 @@
       percent: +d.percent
     }));
 
-    // Stable mapping: each 5cm height bin always gets the same color
-    const toBinStart = h => 5 * Math.floor(h / 5);
-    allBinStartsGlobal = Array.from(new Set(allData.map(d => toBinStart(d.height_cm)))).sort((a, b) => a - b);
-    colorScale.domain(allBinStartsGlobal);
-
-    renderLegend();
-
-    setupGenderButtons();
-    setupViewButtons();
-    setupRulerTools();
-    setupQuantileButton();
     setupQuantileGenderButtons();
     setupCartoonSidebar();
+    updateQuantileChart(currentQuantileGender);
     updateCartoonSidebar();
-    updateChart(currentGender);
   });
 })();

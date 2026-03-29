@@ -34,7 +34,8 @@ main {
   padding: 0 2rem 2rem;
 }
 
-#controls {
+#controls,
+#stack-controls {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -157,10 +158,20 @@ main {
 }
 
 #quantile-section {
-  margin-top: 1rem;
+  margin-top: 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+}
+
+.footer-extra {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+}
+
+.footer-extra a {
+  color: #4361ee;
+  font-weight: 700;
 }
 
 #quantile-view-button {
@@ -181,16 +192,18 @@ main {
   gap: 1rem;
 }
 
+/* Line chart (focus + context) : sidebar = 3 : 2 */
 #quantile-chart-column {
-  flex: 1 1 58%;
+  flex: 3 1 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
 #quantile-sidebar {
-  flex: 0 0 min(320px, 38%);
-  max-width: 380px;
+  flex: 2 1 0;
+  min-width: 220px;
+  max-width: none;
   background: linear-gradient(180deg, #fffefb 0%, #eef6ff 100%);
   border: 3px solid #111827;
   border-radius: 12px;
@@ -240,17 +253,93 @@ main {
 }
 
 .cartoon-stage {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-end;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 2px 4px;
-  min-height: 210px;
-  padding: 0.5rem 0.25rem;
+  padding: 0.45rem 0.35rem 0.5rem;
   background: rgba(255, 255, 255, 0.65);
   border-radius: 10px;
   border: 2px dashed #94a3b8;
+}
+
+.cartoon-measure {
+  width: 100%;
+}
+
+.cartoon-label-row,
+.cartoon-cm-row {
+  display: grid;
+  grid-template-columns: 48px repeat(9, minmax(0, 1fr));
+  gap: 0 2px;
+  align-items: center;
+}
+
+.cartoon-label-row {
+  margin-bottom: 0.25rem;
+}
+
+.cartoon-label-ruler-gap,
+.cartoon-cm-ruler-gap {
+  min-width: 0;
+}
+
+.cartoon-cm-row {
+  margin-top: 0.35rem;
+}
+
+.cartoon-chart-wrap {
+  position: relative;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+.cartoon-measure-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+}
+
+.cartoon-ruler-tick-label {
+  font-size: 9px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-weight: 700;
+  fill: #0f172a;
+}
+
+.cartoon-ruler-title {
+  font-size: 9px;
+  font-weight: 800;
+  fill: #64748b;
+}
+
+.cartoon-figure-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 48px repeat(9, minmax(0, 1fr));
+  gap: 0 2px;
+  align-items: end;
+  pointer-events: none;
+}
+
+.cartoon-overlay-ruler-cell {
+  min-width: 0;
+}
+
+.cartoon-figure-slot {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: auto;
 }
 
 .cartoon-stage--male .cartoon-head {
@@ -265,34 +354,30 @@ main {
   filter: saturate(1.05);
 }
 
-.cartoon-figure-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: calc(11% - 4px);
-  min-width: 26px;
-  max-width: 44px;
-}
-
 .cartoon-figure-label {
   font-size: 0.58rem;
   font-weight: 900;
   color: #111827;
   line-height: 1;
-  margin-bottom: 2px;
+  text-align: center;
 }
 
 .cartoon-figure {
   width: 100%;
+  margin: 0 auto;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   transition: height 0.45s cubic-bezier(0.33, 1, 0.68, 1);
 }
 
+/* Fills slot so stature maps 1:1 to ruler; head stays on the horizontal guide (no vertical bob). */
 .cartoon-figure-svg {
   width: 100%;
   height: 100%;
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: visible;
   animation: cartoon-sway 2.8s ease-in-out infinite;
   animation-delay: var(--sway-delay, 0s);
@@ -302,18 +387,19 @@ main {
 @keyframes cartoon-sway {
   0%,
   100% {
-    transform: rotate(-2deg) translateY(0);
+    transform: rotate(-1deg);
   }
   50% {
-    transform: rotate(2deg) translateY(-2px);
+    transform: rotate(1deg);
   }
 }
 
 .cartoon-cm {
-  font-size: 0.55rem;
+  font-size: 0.52rem;
   font-weight: 800;
   color: #334155;
-  margin-top: 2px;
+  text-align: center;
+  min-width: 0;
 }
 
 .cartoon-caption {
@@ -361,13 +447,10 @@ main {
     flex-direction: column;
   }
 
+  #quantile-chart-column,
   #quantile-sidebar {
     flex: 1 1 auto;
-    max-width: none;
-  }
-
-  .cartoon-figure-wrap {
-    width: calc(20% - 4px);
+    min-width: 0;
   }
 }
 
