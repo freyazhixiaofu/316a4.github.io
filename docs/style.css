@@ -508,15 +508,30 @@ main {
 
 .quantile-legend-html {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 10px;
+  flex-direction: column;
+  gap: 0.45rem;
   margin-top: 0.5rem;
-  padding: 0.45rem 0.5rem;
+  padding: 0.45rem 0.55rem;
   background: rgba(255, 255, 255, 0.75);
   border-radius: 8px;
   border: 1px solid #bbb;
   font-size: 0.72rem;
   font-weight: 800;
+}
+
+.quantile-legend-intro {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #1e293b;
+}
+
+.quantile-legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
 }
 
 .quantile-legend-item {
@@ -531,6 +546,15 @@ main {
   height: 8px;
   border-radius: 2px;
   border: 1px solid #111827;
+}
+
+#quantile-chart .quantile-line-label {
+  font-size: 11px;
+  font-weight: 800;
+  paint-order: stroke fill;
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 3px;
+  pointer-events: none;
 }
 
 @media (max-width: 960px) {

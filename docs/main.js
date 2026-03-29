@@ -36,6 +36,7 @@
   let quantileGridGX = null;
   let quantileGridGY = null;
   let quantileLineG = null;
+  let quantileLineLabelsG = null;
   let quantileHitPointsG = null;
   let quantileClipId = "quantile-focus-clip";
   let cartoonHiTimeout = null;
@@ -64,6 +65,59 @@
     const b = values[i1];
     if (i0 === i1) return a;
     return Math.abs(a.age - age) <= Math.abs(b.age - age) ? a : b;
+  }
+
+  /** Spread quantile line labels vertically so they do not overlap (SVG y coords). */
+  function spreadQuantileLabelYs(series, labelAge, yQ, innerH) {
+    const minY = 10;
+    const maxY = innerH - 10;
+    const rows = series
+      .map(d => {
+        const pt = nearestQuantilePoint(d.values, labelAge);
+        if (!pt || pt.stature == null) return null;
+        return { key: d.key, idealY: yQ(pt.stature) };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.idealY - b.idealY);
+
+    if (rows.length === 0) return new Map();
+    if (rows.length === 1) {
+      const y = Math.max(minY, Math.min(maxY, rows[0].idealY));
+      return new Map([[rows[0].key, y]]);
+    }
+
+    const n = rows.length;
+    const tryGap = minGap => {
+      const y = [];
+      y[0] = rows[0].idealY;
+      for (let i = 1; i < n; i++) {
+        y[i] = Math.max(rows[i].idealY, y[i - 1] + minGap);
+      }
+      const shiftLo = minY - y[0];
+      const shiftHi = maxY - y[n - 1];
+      if (shiftLo > shiftHi) return { ok: false, placed: null, keys: rows.map(r => r.key) };
+      const shift = Math.max(shiftLo, Math.min(shiftHi, 0));
+      const placed = y.map(v => v + shift);
+      const ok = placed.every(v => v >= minY && v <= maxY);
+      return { ok, placed, keys: rows.map(r => r.key) };
+    };
+
+    const maxGap = Math.max(4, Math.floor((maxY - minY) / Math.max(1, n - 1)) - 1);
+    for (let g = Math.min(15, maxGap); g >= 4; g -= 2) {
+      const { placed, ok, keys } = tryGap(g);
+      if (ok && placed) {
+        const map = new Map();
+        keys.forEach((k, i) => map.set(k, placed[i]));
+        return map;
+      }
+    }
+
+    const map = new Map();
+    rows.forEach((r, i) => {
+      const t = n === 1 ? 0 : i / (n - 1);
+      map.set(r.key, minY + t * (maxY - minY));
+    });
+    return map;
   }
 
   const quantileTooltip = d3
@@ -156,6 +210,8 @@
       .append("g")
       .attr("class", "quantile-lines")
       .attr("clip-path", `url(#${quantileClipId})`);
+
+    quantileLineLabelsG = quantilePlotG.append("g").attr("class", "quantile-line-labels");
 
     quantileHitPointsG = quantilePlotG
       .append("g")
@@ -425,6 +481,30 @@
       .attr("d", d => line(d.values));
     lines.exit().remove();
 
+    const labelAge = domain[1];
+    const labelYByKey = spreadQuantileLabelYs(series, labelAge, yQ, quantileInnerHeight);
+    const labelTexts = quantileLineLabelsG.selectAll("text.quantile-line-label").data(series, d => d.key);
+    labelTexts
+      .enter()
+      .append("text")
+      .attr("class", "quantile-line-label")
+      .merge(labelTexts)
+      .attr("x", quantileInnerWidth - 8)
+      .attr("y", d => {
+        const pt = nearestQuantilePoint(d.values, labelAge);
+        if (!pt || pt.stature == null) return 0;
+        return labelYByKey.has(d.key) ? labelYByKey.get(d.key) : yQ(pt.stature);
+      })
+      .attr("text-anchor", "end")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", d => d.color)
+      .style("opacity", d => {
+        const pt = nearestQuantilePoint(d.values, labelAge);
+        return pt && pt.stature != null ? 1 : 0;
+      })
+      .text(d => d.key);
+    labelTexts.exit().remove();
+
     const flatPoints = series.flatMap(s =>
       s.values.map(v => ({
         key: s.key,
@@ -464,6 +544,7 @@
       });
     hitSel.exit().remove();
 
+    quantileLineLabelsG.raise();
     quantileHitPointsG.raise();
   }
 
@@ -545,7 +626,9 @@
     latestQuantileSeries = series;
     latestQuantileP50 = series.find(s => s.key === "P50")?.values || [];
 
-    quantileTitle.text(`${gender === "All" ? "All Genders" : gender} Stature vs Age`);
+    quantileTitle.text(
+      `${gender === "All" ? "All Genders" : gender} Stature vs Age (colored by quantile)`
+    );
     renderQuantileFocus(series);
     renderQuantileContext(latestQuantileP50, latestQuantileYDomain);
     renderQuantileLegendHtml(series);
@@ -554,12 +637,13 @@
   function renderQuantileLegendHtml(series) {
     const el = document.getElementById("quantile-chart-legend");
     if (!el) return;
-    el.innerHTML = series
+    const items = series
       .map(
         s =>
           `<div class="quantile-legend-item"><span class="quantile-legend-swatch" style="background:${s.color}"></span><span>${s.key}</span></div>`
       )
       .join("");
+    el.innerHTML = `<p class="quantile-legend-intro">Each line is a <strong>quantile</strong> of height (a percentile of the cross-sectional height distribution at each age). Labels on the chart match the line colors.</p><div class="quantile-legend-items">${items}</div>`;
   }
 
   function staturesAtCartoonAge(age, gender) {
