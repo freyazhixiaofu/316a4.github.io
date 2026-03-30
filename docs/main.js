@@ -8,8 +8,8 @@
   const quantileWidth = parseInt(quantileSvg.style("width"), 10) || 940;
   const quantileHeight = parseInt(quantileSvg.style("height"), 10) || 620;
   const quantileContextHeight = parseInt(quantileContextSvg.style("height"), 10) || 130;
-  const quantileMargin = { top: 60, right: 28, bottom: 55, left: 70 };
-  const quantileContextMargin = { top: 10, right: 28, bottom: 26, left: 70 };
+  const quantileMargin = { top: 50, right: 22, bottom: 46, left: 58 };
+  const quantileContextMargin = { top: 8, right: 22, bottom: 22, left: 58 };
   const quantileInnerWidth = quantileWidth - quantileMargin.left - quantileMargin.right;
   const quantileInnerHeight = quantileHeight - quantileMargin.top - quantileMargin.bottom;
   const quantileContextInnerWidth = quantileWidth - quantileContextMargin.left - quantileContextMargin.right;
@@ -131,6 +131,8 @@
   let currentQuantileGender = "All";
   let cartoonGender = "All";
   let cartoonAge = 30;
+  /** SVG radius (px) for quantile hit circles on the main chart */
+  let quantileDotRadius = 3.2;
 
   function getFilteredData(gender) {
     if (gender === "All") {
@@ -287,7 +289,7 @@
     );
     let best = null;
     let bestDist = Infinity;
-    const clickPx = 13;
+    const clickPx = Math.max(8, quantileDotRadius * 3);
     flat.forEach(d => {
       const dx = xQ(d.age) - px;
       const dy = yQ(d.stature) - py;
@@ -420,6 +422,48 @@
     });
   }
 
+  /**
+   * Min/max stature (cm) visible in [ageMin, ageMax]: includes values at brush edges (interpolated
+   * via nearestQuantilePoint) so the y-scale matches the drawn lines even when no integer age falls
+   * inside a narrow brush. Tight padding keeps lines vertically separated (same logic with or without dots).
+   */
+  function yExtentForAgeRange(series, ageMin, ageMax) {
+    const statures = [];
+    for (const s of series) {
+      const atMin = nearestQuantilePoint(s.values, ageMin);
+      const atMax = nearestQuantilePoint(s.values, ageMax);
+      if (atMin && atMin.stature != null) statures.push(atMin.stature);
+      if (atMax && atMax.stature != null) statures.push(atMax.stature);
+      for (const v of s.values) {
+        if (v.stature == null) continue;
+        const a = +v.age;
+        if (a >= ageMin && a <= ageMax) statures.push(v.stature);
+      }
+    }
+    if (!statures.length) return null;
+    const rawMin = d3.min(statures);
+    const rawMax = d3.max(statures);
+    const span = rawMax - rawMin;
+    const pad = Math.max(2.5, span * 0.045);
+    let yMin = Math.floor((rawMin - pad) / 5) * 5;
+    let yMax = Math.ceil((rawMax + pad) / 5) * 5;
+    if (yMax - yMin < 22) {
+      const mid = (rawMin + rawMax) / 2;
+      yMin = Math.floor((mid - 12) / 5) * 5;
+      yMax = Math.ceil((mid + 12) / 5) * 5;
+    }
+    return [yMin, yMax];
+  }
+
+  function quantileYTickValues(yMin, yMax) {
+    const ySpan = yMax - yMin;
+    const step = ySpan <= 45 ? 5 : ySpan <= 110 ? 10 : 20;
+    const start = Math.ceil(yMin / step) * step;
+    const out = [];
+    for (let v = start; v <= yMax + 1e-6; v += step) out.push(v);
+    return out.length ? out : [yMin, yMax];
+  }
+
   function renderQuantileFocus(series) {
     if (!series.length || !latestQuantileYDomain || !quantileBuilt) return;
     const [globalYMin, globalYMax] = latestQuantileYDomain;
@@ -432,8 +476,17 @@
       domain[1] = Math.min(80, center + 0.5);
     }
 
+    let focusYMin = globalYMin;
+    let focusYMax = globalYMax;
+    if (quantileBrushDomain) {
+      const ext = yExtentForAgeRange(series, domain[0], domain[1]);
+      if (ext) [focusYMin, focusYMax] = ext;
+    }
+
     xQ = d3.scaleLinear().domain(domain).range([0, quantileInnerWidth]);
-    yQ = d3.scaleLinear().domain([globalYMin, globalYMax]).range([quantileInnerHeight, 0]);
+    yQ = d3.scaleLinear().domain([focusYMin, focusYMax]).range([quantileInnerHeight, 0]);
+
+    const yTicks = quantileYTickValues(focusYMin, focusYMax);
 
     const span = domain[1] - domain[0];
     const xTickStep = span <= 14 ? 1 : span <= 30 ? 2 : 5;
@@ -446,8 +499,7 @@
           .tickFormat("")
       )
       .attr("transform", "translate(0,0)");
-    quantileGridGY
-      .call(d3.axisLeft(yQ).tickValues(d3.range(globalYMin, globalYMax + 1, 10)).tickSize(-quantileInnerWidth).tickFormat(""));
+    quantileGridGY.call(d3.axisLeft(yQ).tickValues(yTicks).tickSize(-quantileInnerWidth).tickFormat(""));
 
     quantileGridGX.selectAll("line").attr("stroke", "#b8b8b8").attr("stroke-opacity", 0.7);
     quantileGridGX.select(".domain").remove();
@@ -457,7 +509,7 @@
     quantileXAxisG.call(
       d3.axisBottom(xQ).tickValues(d3.range(Math.ceil(domain[0] / xTickStep) * xTickStep, Math.floor(domain[1]) + 1, xTickStep))
     );
-    quantileYAxisG.call(d3.axisLeft(yQ).tickValues(d3.range(globalYMin, globalYMax + 1, 20)));
+    quantileYAxisG.call(d3.axisLeft(yQ).tickValues(yTicks));
     quantileXAxisG.selectAll("text").attr("fill", "#222").attr("font-size", 12);
     quantileYAxisG.selectAll("text").attr("fill", "#222").attr("font-size", 12);
     quantileXAxisG.selectAll("line, path").attr("stroke", "#6f6f6f");
@@ -506,16 +558,19 @@
     labelTexts.exit().remove();
 
     const flatPoints = series.flatMap(s =>
-      s.values.map(v => ({
-        key: s.key,
-        color: s.color,
-        age: v.age,
-        stature: v.stature
-      }))
+      s.values
+        .filter(v => +v.age >= domain[0] && +v.age <= domain[1])
+        .map(v => ({
+          key: s.key,
+          color: s.color,
+          age: v.age,
+          stature: v.stature
+        }))
     );
     const hitSel = quantileHitPointsG
       .selectAll("circle.quantile-hit-point")
       .data(flatPoints, d => `${d.key}-${d.age}`);
+    const dotStroke = Math.max(1, Math.min(2.6, quantileDotRadius * 0.48));
     hitSel
       .enter()
       .append("circle")
@@ -523,10 +578,10 @@
       .merge(hitSel)
       .attr("cx", d => xQ(d.age))
       .attr("cy", d => yQ(d.stature))
-      .attr("r", 4.5)
+      .attr("r", quantileDotRadius)
       .attr("fill", "#fff")
       .attr("stroke", d => d.color)
-      .attr("stroke-width", 2)
+      .attr("stroke-width", dotStroke)
       .style("cursor", "pointer")
       .on("click", (e, d) => {
         e.stopPropagation();
@@ -761,11 +816,11 @@
     const tallest = d3.max(rows, d => d.stature);
     const hMaxCm = Math.min(250, Math.max(200, Math.ceil(tallest / 5) * 5 + 30));
 
-    const plotH = 300;
+    const plotH = 260;
     const chartViewH = plotH + RULER_UNIT_BAND;
-    const rulerW = 56;
+    const rulerW = 52;
     const n = rows.length;
-    const colW = 56;
+    const colW = 50;
     const totalW = rulerW + n * colW;
     const figureOverlayTopPct = (RULER_UNIT_BAND / chartViewH) * 100;
 
@@ -875,6 +930,21 @@
     });
   }
 
+  function setupQuantileDotSizeSlider() {
+    const input = document.getElementById("quantile-dot-size");
+    const valueEl = document.getElementById("quantile-dot-size-value");
+    if (!input) return;
+    quantileDotRadius = +input.value || 3.2;
+    if (valueEl) valueEl.textContent = quantileDotRadius.toFixed(1);
+    input.addEventListener("input", () => {
+      quantileDotRadius = +input.value;
+      if (valueEl) valueEl.textContent = quantileDotRadius.toFixed(1);
+      if (latestQuantileSeries.length && quantileBuilt) {
+        renderQuantileFocus(latestQuantileSeries);
+      }
+    });
+  }
+
   d3.json("data/height_distributions_by_age_gender.json").then(json => {
     allData = json.map(d => ({
       age_bin: +d.age_bin,
@@ -885,6 +955,7 @@
     }));
 
     setupQuantileGenderButtons();
+    setupQuantileDotSizeSlider();
     setupCartoonSidebar();
     updateQuantileChart(currentQuantileGender);
     updateCartoonSidebar();

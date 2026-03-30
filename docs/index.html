@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Height Across the Life Course</title>
   <link rel="stylesheet" href="style.css" />
   <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -15,11 +16,18 @@
   </header>
   <main>
     <section id="quantile-section">
-      <div class="control-group" id="quantile-controls">
-        <span class="control-label">Quantile Gender:</span>
-        <button class="gender-toggle quantile-gender-toggle active" data-quantile-gender="All">All</button>
-        <button class="gender-toggle quantile-gender-toggle" data-quantile-gender="Male">Male</button>
-        <button class="gender-toggle quantile-gender-toggle" data-quantile-gender="Female">Female</button>
+      <div class="quantile-controls-row">
+        <div class="control-group" id="quantile-controls">
+          <span class="control-label">Quantile Gender:</span>
+          <button class="gender-toggle quantile-gender-toggle active" data-quantile-gender="All">All</button>
+          <button class="gender-toggle quantile-gender-toggle" data-quantile-gender="Male">Male</button>
+          <button class="gender-toggle quantile-gender-toggle" data-quantile-gender="Female">Female</button>
+        </div>
+        <div class="control-group quantile-dot-size-wrap">
+          <label class="control-label" for="quantile-dot-size">Dot size:</label>
+          <input id="quantile-dot-size" type="range" min="1.5" max="8" step="0.1" value="3.2" aria-valuemin="1.5" aria-valuemax="8" />
+          <span id="quantile-dot-size-value" class="quantile-dot-size-value">3.2</span>
+        </div>
       </div>
       <div id="quantile-chart-card">
         <div id="quantile-layout">
